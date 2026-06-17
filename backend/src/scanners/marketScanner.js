@@ -5,6 +5,7 @@ import { analyzeFunding } from './fundingScanner.js';
 import { analyzeOpenInterest } from './openInterestScanner.js';
 import { classifyMarketRegime, priceChangePct as computePriceChangePct } from './marketRegime.js';
 import { scoreMarket } from './scoring.js';
+import { calculateMemeExplosionScore } from './memeExplosionScore.js';
 
 function extractFundingRate(raw) {
   if (!raw) return null;
@@ -92,6 +93,12 @@ export class MarketScanner {
       marketRegime
     });
 
+    const memeExplosion = calculateMemeExplosionScore({
+      bars: safeBars,
+      metrics,
+      scoring
+    });
+
     return {
       symbol,
       timeframe,
@@ -99,6 +106,8 @@ export class MarketScanner {
       price: safeBars.length ? safeBars[safeBars.length - 1].close : Number(safeTicker?.lastPrice || safeTicker?.last || 0),
       metrics,
       scoring,
+      memeExplosion,
+      decision: buildDecision(scoring, memeExplosion),
       errors: [
         bars.status === 'rejected' ? `bars: ${bars.reason.message}` : null,
         depth.status === 'rejected' ? `depth: ${depth.reason.message}` : null,
@@ -111,8 +120,43 @@ export class MarketScanner {
 
   async scanUniverse(symbols = env.allowedSymbols, timeframe = env.defaultTimeframe) {
     const results = await Promise.all(symbols.map((symbol) => this.scanSymbol(symbol, timeframe)));
-    return results.sort((a, b) => b.scoring.score - a.scoring.score);
+    return results.sort((a, b) => {
+      const memeDiff = (b.memeExplosion?.score || 0) - (a.memeExplosion?.score || 0);
+      return memeDiff !== 0 ? memeDiff : b.scoring.score - a.scoring.score;
+    });
   }
+}
+
+function buildDecision(scoring, memeExplosion) {
+  if (memeExplosion.score >= 85) {
+    return {
+      action: 'WATCH_FOR_MANUAL_ENTRY',
+      priority: 'HIGH',
+      text: `Meme Explosion probable en ${memeExplosion.direction}. Validation manuelle indispensable.`
+    };
+  }
+
+  if (memeExplosion.score >= 70) {
+    return {
+      action: 'WAIT_CONFIRMATION',
+      priority: 'MEDIUM',
+      text: `Setup memecoin interessant en ${memeExplosion.direction}, confirmation necessaire.`
+    };
+  }
+
+  if (scoring.score >= 80) {
+    return {
+      action: 'WATCH_FOR_MANUAL_ENTRY',
+      priority: 'MEDIUM',
+      text: `Score marche eleve en ${scoring.direction}, mais pas encore explosion memecoin.`
+    };
+  }
+
+  return {
+    action: 'NO_TRADE',
+    priority: 'LOW',
+    text: 'Aucune condition forte. Attendre.'
+  };
 }
 
 export const marketScanner = new MarketScanner();
