@@ -2,7 +2,18 @@ function clamp(value, min = 0, max = 100) {
   return Math.max(min, Math.min(max, value));
 }
 
-export function scoreMarket({ bars, rangePct, rsi, volumeRatio, orderBook, fundingRate, openInterest }) {
+export function scoreMarket({
+  bars,
+  rangePct,
+  rsi,
+  volumeRatio,
+  orderBook,
+  fundingRate,
+  fundingAnalysis,
+  openInterest,
+  openInterestAnalysis,
+  marketRegime
+}) {
   const last = bars?.[bars.length - 1];
   const previous = bars?.[bars.length - 2];
   const bullishCandle = last && previous ? last.close > last.open && last.close > previous.high : false;
@@ -67,7 +78,12 @@ export function scoreMarket({ bars, rangePct, rsi, volumeRatio, orderBook, fundi
     }
   }
 
-  if (fundingRate !== null && fundingRate !== undefined) {
+  if (fundingAnalysis?.available) {
+    longScore += fundingAnalysis.scoreLong || 0;
+    shortScore += fundingAnalysis.scoreShort || 0;
+    if (fundingAnalysis.scoreLong) reasons.long.push(fundingAnalysis.pressure);
+    if (fundingAnalysis.scoreShort) reasons.short.push(fundingAnalysis.pressure);
+  } else if (fundingRate !== null && fundingRate !== undefined) {
     const fr = Number(fundingRate);
     if (Number.isFinite(fr)) {
       if (fr > 0 && fr < 0.0005) {
@@ -85,9 +101,29 @@ export function scoreMarket({ bars, rangePct, rsi, volumeRatio, orderBook, fundi
     }
   }
 
-  if (openInterest !== null && openInterest !== undefined) {
+  if (openInterestAnalysis?.available) {
+    longScore += openInterestAnalysis.scoreLong || 0;
+    shortScore += openInterestAnalysis.scoreShort || 0;
+    for (const reason of openInterestAnalysis.reasons || []) {
+      if (openInterestAnalysis.scoreLong) reasons.long.push(reason);
+      if (openInterestAnalysis.scoreShort) reasons.short.push(reason);
+    }
+  } else if (openInterest !== null && openInterest !== undefined) {
     longScore += 5;
     shortScore += 5;
+  }
+
+  if (marketRegime?.regime === 'PUMP_ADVANCED') {
+    longScore -= 12;
+    shortScore += 6;
+    reasons.long.push('pump deja avance');
+    reasons.short.push('possible exces haussier');
+  }
+
+  if (marketRegime?.regime === 'DISTRIBUTION_OR_FLUSH') {
+    longScore -= 10;
+    shortScore += 8;
+    reasons.short.push('distribution ou flush');
   }
 
   longScore = clamp(Math.round(longScore));
