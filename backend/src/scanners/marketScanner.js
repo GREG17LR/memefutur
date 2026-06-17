@@ -1,6 +1,9 @@
 import { env } from '../config/env.js';
 import { mexcClient } from '../exchanges/mexc.js';
 import { orderBookMetrics, rangePct as computeRangePct, rsi as computeRsi, volumeRatio as computeVolumeRatio } from './indicators.js';
+import { analyzeFunding } from './fundingScanner.js';
+import { analyzeOpenInterest } from './openInterestScanner.js';
+import { classifyMarketRegime, priceChangePct as computePriceChangePct } from './marketRegime.js';
 import { scoreMarket } from './scoring.js';
 
 function extractFundingRate(raw) {
@@ -13,6 +16,18 @@ function extractFundingRate(raw) {
 export class MarketScanner {
   constructor(client = mexcClient) {
     this.client = client;
+    this.openInterestHistory = new Map();
+  }
+
+  rememberOpenInterest(symbol, value) {
+    const currentHistory = this.openInterestHistory.get(symbol) || [];
+    currentHistory.push({ timestamp: Date.now(), value });
+    this.openInterestHistory.set(symbol, currentHistory.slice(-20));
+  }
+
+  getPreviousOpenInterest(symbol) {
+    const history = this.openInterestHistory.get(symbol) || [];
+    return history.length >= 1 ? history[history.length - 1].value : null;
   }
 
   async scanSymbol(symbol, timeframe = env.defaultTimeframe) {
@@ -30,15 +45,39 @@ export class MarketScanner {
     const safeOpenInterest = openInterest.status === 'fulfilled' ? openInterest.value : null;
     const safeTicker = ticker.status === 'fulfilled' ? ticker.value : null;
 
+    const priceChange = computePriceChangePct(safeBars, 4);
+    const fundingAnalysis = analyzeFunding(safeFunding);
+    const openInterestAnalysis = analyzeOpenInterest({
+      current: safeOpenInterest,
+      previous: this.getPreviousOpenInterest(symbol),
+      priceChangePct: priceChange
+    });
+
+    if (safeOpenInterest) {
+      this.rememberOpenInterest(symbol, safeOpenInterest);
+    }
+
     const metrics = {
       rangePct: computeRangePct(safeBars, 12),
       rsi: computeRsi(safeBars, 14),
       volumeRatio: computeVolumeRatio(safeBars, 20),
+      priceChangePct: priceChange,
       orderBook: orderBookMetrics(safeDepth),
       fundingRate: extractFundingRate(safeFunding),
+      fundingAnalysis,
       openInterest: safeOpenInterest,
+      openInterestAnalysis,
       ticker: safeTicker
     };
+
+    const marketRegime = classifyMarketRegime({
+      priceChangePct: metrics.priceChangePct,
+      volumeRatio: metrics.volumeRatio,
+      fundingAnalysis,
+      openInterestAnalysis
+    });
+
+    metrics.marketRegime = marketRegime;
 
     const scoring = scoreMarket({
       bars: safeBars,
@@ -47,7 +86,10 @@ export class MarketScanner {
       volumeRatio: metrics.volumeRatio,
       orderBook: metrics.orderBook,
       fundingRate: metrics.fundingRate,
-      openInterest: metrics.openInterest
+      fundingAnalysis,
+      openInterest: metrics.openInterest,
+      openInterestAnalysis,
+      marketRegime
     });
 
     return {
