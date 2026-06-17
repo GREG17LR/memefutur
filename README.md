@@ -1,0 +1,2 @@
+# memefutur
+Trading Bot
