@@ -49,7 +49,7 @@ public class MainActivity extends Activity {
         root.addView(title, fullWidth());
 
         TextView subtitle = new TextView(this);
-        subtitle.setText("Scanner futures local - Termux / DRY_RUN");
+        subtitle.setText("Meme Explosion Scanner - Termux / DRY_RUN");
         subtitle.setTextColor(Color.rgb(130, 180, 255));
         subtitle.setTextSize(15);
         subtitle.setGravity(Gravity.CENTER);
@@ -89,7 +89,7 @@ public class MainActivity extends Activity {
         root.addView(emergency, fullWidth());
 
         TextView section = new TextView(this);
-        section.setText("Top signaux");
+        section.setText("Top Meme Explosion");
         section.setTextColor(Color.WHITE);
         section.setTextSize(22);
         section.setTypeface(Typeface.DEFAULT_BOLD);
@@ -153,7 +153,7 @@ public class MainActivity extends Activity {
 
     private void scanSignals() {
         status.setText("Scan MEXC en cours...");
-        recommendation.setText("Décision : analyse des conditions en cours...");
+        recommendation.setText("Décision : analyse Meme Explosion en cours...");
         signalsContainer.removeAllViews();
 
         new Thread(() -> {
@@ -190,56 +190,69 @@ public class MainActivity extends Activity {
             signalsContainer.addView(signalCard(item, i + 1), fullWidthWithMargins(0, 0, 0, 18));
         }
 
+        JSONObject meme = best.optJSONObject("memeExplosion");
         JSONObject scoring = best.optJSONObject("scoring");
+        JSONObject decisionObj = best.optJSONObject("decision");
         String symbol = best.optString("symbol", "?");
-        String direction = scoring != null ? scoring.optString("direction", "?") : "?";
-        int score = scoring != null ? scoring.optInt("score", 0) : 0;
-        String confidence = scoring != null ? scoring.optString("confidence", "LOW") : "LOW";
+        String direction = meme != null ? meme.optString("direction", "?") : scoring.optString("direction", "?");
+        int memeScore = meme != null ? meme.optInt("score", 0) : 0;
+        int baseScore = scoring != null ? scoring.optInt("score", 0) : 0;
+        String confidence = meme != null ? meme.optString("confidence", "LOW") : scoring.optString("confidence", "LOW");
         double price = best.optDouble("price", 0.0);
 
         String decision;
         int bg;
-        if (score >= 80 && botEnabled) {
-            decision = "Décision : conditions réunies. Préconisation : surveiller " + symbol + " en " + direction + " avant validation manuelle.";
-            bg = Color.rgb(0, 115, 70);
-        } else if (score >= 65) {
-            decision = "Décision : signal intéressant sur " + symbol + " en " + direction + ", mais confirmation nécessaire.";
-            bg = Color.rgb(135, 95, 10);
+        if (decisionObj != null) {
+            decision = "Décision : " + decisionObj.optString("text", "Attendre.");
+        } else if (memeScore >= 85 && botEnabled) {
+            decision = "Décision : Meme Explosion probable. Surveiller " + symbol + " en " + direction + " avant validation manuelle.";
+        } else if (memeScore >= 70) {
+            decision = "Décision : setup intéressant sur " + symbol + " en " + direction + ", confirmation nécessaire.";
         } else {
-            decision = "Décision : attendre. Aucun setup suffisamment propre. Meilleur score : " + symbol + " " + score + "/100.";
-            bg = Color.rgb(13, 55, 105);
+            decision = "Décision : attendre. Meilleur Meme Explosion Score : " + symbol + " " + memeScore + "/100.";
         }
+
+        if (memeScore >= 85) bg = Color.rgb(0, 115, 70);
+        else if (memeScore >= 70) bg = Color.rgb(135, 95, 10);
+        else bg = Color.rgb(13, 55, 105);
 
         recommendation.setText(decision);
         recommendation.setBackgroundColor(bg);
-        status.setText("Backend : connecté\nBot : " + (botEnabled ? "ON" : "OFF") + "\nDernier scan : OK\nMeilleur : " + symbol + " " + direction + " " + score + "/100 @ " + priceFormat.format(price) + "\nConfiance : " + confidence);
+        status.setText("Backend : connecté\nBot : " + (botEnabled ? "ON" : "OFF")
+                + "\nDernier scan : OK"
+                + "\nMeilleur MES : " + symbol + " " + direction + " " + memeScore + "/100 @ " + priceFormat.format(price)
+                + "\nScore marché : " + baseScore + "/100 | Confiance : " + confidence);
     }
 
     private TextView signalCard(JSONObject item, int rank) {
         JSONObject scoring = item.optJSONObject("scoring");
+        JSONObject meme = item.optJSONObject("memeExplosion");
         JSONObject metrics = item.optJSONObject("metrics");
         JSONObject regime = metrics != null ? metrics.optJSONObject("marketRegime") : null;
 
         String symbol = item.optString("symbol", "?");
         double price = item.optDouble("price", 0.0);
-        String direction = scoring != null ? scoring.optString("direction", "?") : "?";
-        int score = scoring != null ? scoring.optInt("score", 0) : 0;
-        String confidence = scoring != null ? scoring.optString("confidence", "LOW") : "LOW";
+        String direction = meme != null ? meme.optString("direction", "?") : scoring.optString("direction", "?");
+        int memeScore = meme != null ? meme.optInt("score", 0) : 0;
+        int baseScore = scoring != null ? scoring.optInt("score", 0) : 0;
+        String confidence = meme != null ? meme.optString("confidence", "LOW") : scoring.optString("confidence", "LOW");
+        String label = meme != null ? meme.optString("label", "WAIT") : "WAIT";
         String regimeText = regime != null ? regime.optString("regime", "NEUTRAL") : "NEUTRAL";
-        String reasons = scoring != null ? scoring.optJSONArray("reasons").toString() : "[]";
+        JSONArray reasonsArray = meme != null ? meme.optJSONArray("reasons") : null;
+        String reasons = reasonsArray != null ? reasonsArray.toString() : "[]";
 
         TextView card = new TextView(this);
-        card.setText(rank + ". " + symbol + "  " + direction + "  " + score + "/100\n"
-                + "Prix : " + priceFormat.format(price) + " | Confiance : " + confidence + "\n"
-                + "Régime : " + regimeText + "\n"
+        card.setText(rank + ". " + symbol + "  " + direction + "  MES " + memeScore + "/100\n"
+                + "Prix : " + priceFormat.format(price) + " | Confiance : " + confidence + " | Base : " + baseScore + "/100\n"
+                + "Label : " + label + " | Régime : " + regimeText + "\n"
                 + "Pourquoi : " + reasons);
         card.setTextColor(Color.WHITE);
         card.setTextSize(15);
         card.setPadding(24, 22, 24, 22);
 
-        if (score >= 80) {
+        if (memeScore >= 85) {
             card.setBackgroundColor(Color.rgb(0, 100, 65));
-        } else if (score >= 65) {
+        } else if (memeScore >= 70) {
             card.setBackgroundColor(Color.rgb(110, 80, 10));
         } else {
             card.setBackgroundColor(Color.rgb(20, 40, 75));
